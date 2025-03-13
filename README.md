@@ -1,6 +1,6 @@
-# Cohenix Warehouse Management System
+# Cohenix Stock Management System
 
-A modern, mobile-first warehouse management system built with React and integrated with Cohenix/ERP.
+A modern, mobile-first Stock Management system built with React and integrated with Cohenix/ERP.
 
 ![Cohenix WMS](https://github.com/epiusegs/cohenix_resource/blob/develop/media/Mockup.png)
 
