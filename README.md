@@ -2,7 +2,7 @@
 
 A modern, mobile-first warehouse management system built with React and integrated with Cohenix/ERP.
 
-![Cohenix WMS](https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&q=80&w=2000)
+![Cohenix WMS](https://github.com/epiusegs/cohenix_resource/blob/develop/media/Mockup.png)
 
 ## Features
 
