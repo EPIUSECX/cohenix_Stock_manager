@@ -108,8 +108,6 @@ export default function StockEntry() {
           fps: 10, 
           qrbox: { width: 250, height: 250 },
           aspectRatio: 1.0,
-          showTorchButtonIfSupported: true,
-          showZoomSliderIfSupported: true,
           videoConstraints: {
             facingMode: "environment"
           }
@@ -147,7 +145,7 @@ export default function StockEntry() {
           }
         },
         (errorMessage) => {
-          if (!errorMessage.includes('undefined')) {
+          if (errorMessage && typeof errorMessage === 'string' && !errorMessage.includes('undefined')) {
             console.warn(errorMessage);
           }
         }
