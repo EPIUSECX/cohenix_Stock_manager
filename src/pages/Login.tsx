@@ -54,7 +54,7 @@ export default function Login() {
       await testConnection(newSettings);
       setConnectionStatus('success');
       toast.success('Connection successful!');
-    } catch (error) {
+    } catch {
       setConnectionStatus('error');
       if (error instanceof Error && error.message === 'CORS_BLOCKED') {
         toast.error('Connection blocked by CORS. Add https://stockmanagerx.netlify.app to your Frappe allowed origins or use a backend proxy.');
