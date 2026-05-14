@@ -15,10 +15,12 @@ interface ItemLookupResult {
   uom?: string;
 }
 
+const normalizeBaseUrl = (url: string) => url.trim().replace(/\/+$/, "");
+
 const getApiConfig = () => {
   const settings = useSettingsStore.getState().apiSettings;
   return {
-    baseURL: settings.baseUrl,
+    baseURL: normalizeBaseUrl(settings.baseUrl),
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -46,14 +48,22 @@ const getErrorDetails = (error: any) => ({
 });
 
 export const testConnection = async (settings: { baseUrl: string; apiKey: string; apiSecret: string }) => {
-  const response = await axios.get(`${settings.baseUrl}/api/method/frappe.auth.get_logged_user`, {
-    headers: {
-      Authorization: `token ${settings.apiKey}:${settings.apiSecret}`,
-    },
-    withCredentials: true,
-  });
+  const baseUrl = normalizeBaseUrl(settings.baseUrl);
 
-  return response.data?.message;
+  try {
+    const response = await axios.get(`${baseUrl}/api/method/frappe.auth.get_logged_user`, {
+      headers: {
+        Authorization: `token ${settings.apiKey}:${settings.apiSecret}`,
+      },
+      withCredentials: true,
+    });
+    return response.data?.message;
+  } catch (error: any) {
+    if (error?.message?.includes("Network Error") || error?.code === "ERR_NETWORK" || error?.response?.status === 0) {
+      throw new Error("CORS_BLOCKED");
+    }
+    throw error;
+  }
 };
 
 export const login = async (username: string, password: string) => {

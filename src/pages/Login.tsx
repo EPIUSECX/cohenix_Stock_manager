@@ -38,7 +38,7 @@ export default function Login() {
         email: response.message.user.email || username,
       });
       navigate('/dashboard');
-    } catch {
+    } catch (error) {
       setError('Invalid username or password. Please try again.');
     } finally {
       setIsLoading(false);
@@ -55,7 +55,11 @@ export default function Login() {
       toast.success('Connection successful!');
     } catch {
       setConnectionStatus('error');
-      toast.error('Connection failed. Please check your settings.');
+      if (error instanceof Error && error.message === 'CORS_BLOCKED') {
+        toast.error('Connection blocked by CORS. Add https://stockmanagerx.netlify.app to your Frappe allowed origins or use a backend proxy.');
+      } else {
+        toast.error('Connection failed. Please check your settings.');
+      }
     } finally {
       setIsTestingConnection(false);
     }
