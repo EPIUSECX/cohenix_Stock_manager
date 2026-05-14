@@ -24,9 +24,6 @@ const getApiConfig = () => {
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
-      ...(settings.useTokenAuth && settings.apiKey && settings.apiSecret
-        ? { Authorization: `token ${settings.apiKey}:${settings.apiSecret}` }
-        : {}),
     },
     withCredentials: true,
   };
@@ -49,26 +46,10 @@ const getErrorDetails = (error: any) => ({
   code: error?.code,
 });
 
-export const testConnection = async (settings: { baseUrl: string; apiKey: string; apiSecret: string; useTokenAuth: boolean }) => {
-  const baseUrl = normalizeBaseUrl(settings.baseUrl);
+export const loginToSite = async (baseUrl: string, username: string, password: string) => {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  useSettingsStore.getState().setApiSettings({ baseUrl: normalizedBaseUrl });
 
-  try {
-    const response = await axios.get(`${baseUrl}/api/method/frappe.auth.get_logged_user`, {
-      headers: settings.useTokenAuth
-        ? { Authorization: `token ${settings.apiKey}:${settings.apiSecret}` }
-        : undefined,
-      withCredentials: true,
-    });
-    return response.data?.message;
-  } catch (error: any) {
-    if (error?.message?.includes("Network Error") || error?.code === "ERR_NETWORK" || error?.response?.status === 0) {
-      throw new Error("CORS_BLOCKED");
-    }
-    throw error;
-  }
-};
-
-export const login = async (username: string, password: string) => {
   try {
     const loginResponse = await api.post("/api/method/login", {
       usr: username,
@@ -92,6 +73,9 @@ export const login = async (username: string, password: string) => {
     };
   } catch (error) {
     const errorDetails = getErrorDetails(error);
+    if (errorDetails.code === "ERR_NETWORK") {
+      throw new Error("Unable to reach site. Check URL and CORS settings.");
+    }
     throw new Error(errorDetails.data?.message || "Invalid credentials");
   }
 };

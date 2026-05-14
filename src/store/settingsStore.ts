@@ -3,9 +3,6 @@ import { persist } from 'zustand/middleware';
 
 interface APISettings {
   baseUrl: string;
-  apiKey: string;
-  apiSecret: string;
-  useTokenAuth: boolean;
 }
 
 interface SettingsState {
@@ -16,9 +13,6 @@ interface SettingsState {
 
 const DEFAULT_SETTINGS: APISettings = {
   baseUrl: 'https://demo.cohenix.com',
-  apiKey: '',
-  apiSecret: '',
-  useTokenAuth: false,
 };
 
 export const useSettingsStore = create<SettingsState>()(
