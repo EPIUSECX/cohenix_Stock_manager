@@ -23,6 +23,7 @@ export default function Login() {
     baseUrl: apiSettings.baseUrl,
     apiKey: apiSettings.apiKey,
     apiSecret: apiSettings.apiSecret,
+    useTokenAuth: apiSettings.useTokenAuth,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -124,14 +125,25 @@ export default function Login() {
                   <label className="block text-sm font-medium text-gray-700">Base URL</label>
                   <input type="text" value={newSettings.baseUrl} onChange={(e) => setNewSettings({ ...newSettings, baseUrl: e.target.value })} className="cohenix-input mt-1" placeholder="https://your-frappe-site.com" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">API Key</label>
-                  <input type="text" value={newSettings.apiKey} onChange={(e) => setNewSettings({ ...newSettings, apiKey: e.target.value })} className="cohenix-input mt-1" placeholder="Enter API Key" />
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">Use API Token Auth</label>
+                  <input type="checkbox" checked={newSettings.useTokenAuth} onChange={(e) => setNewSettings({ ...newSettings, useTokenAuth: e.target.checked })} />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">API Secret</label>
-                  <input type="password" value={newSettings.apiSecret} onChange={(e) => setNewSettings({ ...newSettings, apiSecret: e.target.value })} className="cohenix-input mt-1" placeholder="Enter API Secret" />
-                </div>
+
+                {newSettings.useTokenAuth && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">API Key</label>
+                      <input type="text" value={newSettings.apiKey} onChange={(e) => setNewSettings({ ...newSettings, apiKey: e.target.value })} className="cohenix-input mt-1" placeholder="Enter API Key" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">API Secret</label>
+                      <input type="password" value={newSettings.apiSecret} onChange={(e) => setNewSettings({ ...newSettings, apiSecret: e.target.value })} className="cohenix-input mt-1" placeholder="Enter API Secret" />
+                    </div>
+                  </>
+                )}
+
+                <p className="text-xs text-gray-500">If Token Auth is off, this app uses Frappe session login (email/username + password) and keeps you signed in on this device.</p>
 
                 <div className="flex space-x-4 pt-4">
                   <button type="button" onClick={handleTestConnection} disabled={isTestingConnection} className="cohenix-button flex-1 justify-center bg-gray-500 hover:bg-gray-600 focus:ring-gray-500">

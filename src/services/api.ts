@@ -24,7 +24,9 @@ const getApiConfig = () => {
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
-      Authorization: `token ${settings.apiKey}:${settings.apiSecret}`,
+      ...(settings.useTokenAuth && settings.apiKey && settings.apiSecret
+        ? { Authorization: `token ${settings.apiKey}:${settings.apiSecret}` }
+        : {}),
     },
     withCredentials: true,
   };
@@ -47,14 +49,14 @@ const getErrorDetails = (error: any) => ({
   code: error?.code,
 });
 
-export const testConnection = async (settings: { baseUrl: string; apiKey: string; apiSecret: string }) => {
+export const testConnection = async (settings: { baseUrl: string; apiKey: string; apiSecret: string; useTokenAuth: boolean }) => {
   const baseUrl = normalizeBaseUrl(settings.baseUrl);
 
   try {
     const response = await axios.get(`${baseUrl}/api/method/frappe.auth.get_logged_user`, {
-      headers: {
-        Authorization: `token ${settings.apiKey}:${settings.apiSecret}`,
-      },
+      headers: settings.useTokenAuth
+        ? { Authorization: `token ${settings.apiKey}:${settings.apiSecret}` }
+        : undefined,
       withCredentials: true,
     });
     return response.data?.message;
