@@ -25,6 +25,8 @@ interface StockItem {
   serial_no?: string;
   batch_no?: string;
   uom?: string;
+  warehouse?: string;
+  valuation_rate?: number;
 }
 
 const PURPOSES = [
