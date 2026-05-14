@@ -1,22 +1,39 @@
 import axios from "axios";
 import { useSettingsStore } from "../store/settingsStore";
 
+interface FrappeResponse<T> {
+  data: T;
+}
+
+interface ItemLookupResult {
+  item_code: string;
+  item_name?: string;
+  stock_uom?: string;
+  barcode?: string;
+  serial_no?: string;
+  batch_no?: string;
+  uom?: string;
+}
+
+const normalizeBaseUrl = (url: string) => url.trim().replace(/\/+$/, "");
+
 const getApiConfig = () => {
   const settings = useSettingsStore.getState().apiSettings;
   return {
-    baseURL: settings.baseUrl,
+    baseURL: normalizeBaseUrl(settings.baseUrl),
     headers: {
       "Content-Type": "application/json",
-      "Accept": "application/json",
-      "Authorization": `token ${settings.apiKey}:${settings.apiSecret}`
+      Accept: "application/json",
+      ...(settings.useTokenAuth && settings.apiKey && settings.apiSecret
+        ? { Authorization: `token ${settings.apiKey}:${settings.apiSecret}` }
+        : {}),
     },
-    withCredentials: false,
+    withCredentials: true,
   };
 };
 
 export const api = axios.create();
 
-// Update axios instance config before each request
 api.interceptors.request.use((config) => {
   const apiConfig = getApiConfig();
   config.baseURL = apiConfig.baseURL;
@@ -25,26 +42,30 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export const testConnection = async (settings: { baseUrl: string; apiKey: string; apiSecret: string }) => {
-  try {
-    const response = await axios.get(`${settings.baseUrl}/api/method/frappe.auth.get_logged_user`, {
-      headers: {
-        "Authorization": `token ${settings.apiKey}:${settings.apiSecret}`
-      }
-    });
-    return response.data && response.data.message;
-  } catch (error) {
-    throw new Error("Failed to connect to server");
-  }
-};
+const getErrorDetails = (error: any) => ({
+  message: error?.message || "Unknown error",
+  status: error?.response?.status,
+  data: error?.response?.data,
+  code: error?.code,
+});
 
-const getErrorDetails = (error: any) => {
-  return {
-    message: error?.message || 'Unknown error',
-    status: error?.response?.status,
-    data: error?.response?.data,
-    code: error?.code,
-  };
+export const testConnection = async (settings: { baseUrl: string; apiKey: string; apiSecret: string; useTokenAuth: boolean }) => {
+  const baseUrl = normalizeBaseUrl(settings.baseUrl);
+
+  try {
+    const response = await axios.get(`${baseUrl}/api/method/frappe.auth.get_logged_user`, {
+      headers: settings.useTokenAuth
+        ? { Authorization: `token ${settings.apiKey}:${settings.apiSecret}` }
+        : undefined,
+      withCredentials: true,
+    });
+    return response.data?.message;
+  } catch (error: any) {
+    if (error?.message?.includes("Network Error") || error?.code === "ERR_NETWORK" || error?.response?.status === 0) {
+      throw new Error("CORS_BLOCKED");
+    }
+    throw error;
+  }
 };
 
 export const login = async (username: string, password: string) => {
@@ -65,269 +86,157 @@ export const login = async (username: string, password: string) => {
         user: {
           name: username,
           full_name: userResponse.data.message || username,
-          email: userResponse.data.message
+          email: userResponse.data.message,
         },
       },
     };
   } catch (error) {
     const errorDetails = getErrorDetails(error);
-    console.error("Login error:", errorDetails);
     throw new Error(errorDetails.data?.message || "Invalid credentials");
   }
 };
 
-export const getCurrentUser = async () => {
-  try {
-    const response = await api.get("/api/method/frappe.auth.get_logged_user");
-    return response.data;
-  } catch (error) {
-    const errorDetails = getErrorDetails(error);
-    console.error("Error fetching current user:", errorDetails);
-    throw new Error("Failed to fetch user");
-  }
-};
-
 export const getWarehouses = async () => {
-  try {
-    const response = await api.get("/api/resource/Warehouse", {
-      params: {
-        fields: '["name", "warehouse_name", "company", "warehouse_type"]'
-      }
-    });
-    return response.data;
-  } catch (error) {
-    const errorDetails = getErrorDetails(error);
-    console.error("Error fetching warehouses:", errorDetails);
-    throw new Error("Failed to fetch warehouses");
-  }
+  const response = await api.get("/api/resource/Warehouse", {
+    params: { fields: '["name", "warehouse_name", "company", "warehouse_type"]' },
+  });
+  return response.data;
 };
 
 export const getCompanies = async () => {
-  try {
-    const response = await api.get("/api/resource/Company", {
-      params: {
-        fields: '["name", "company_name", "default_currency"]'
-      }
-    });
-    return response.data;
-  } catch (error) {
-    const errorDetails = getErrorDetails(error);
-    console.error("Error fetching companies:", errorDetails);
-    throw new Error("Failed to fetch companies");
-  }
+  const response = await api.get("/api/resource/Company", {
+    params: { fields: '["name", "company_name", "default_currency"]' },
+  });
+  return response.data;
 };
 
 export const createStockEntry = async (data: any) => {
-  try {
-    const payload = {
-      doctype: "Stock Entry",
-      naming_series: "MAT-STE-.YYYY.-",
-      stock_entry_type: data.stock_entry_type,
-      posting_date: new Date().toISOString().split('T')[0],
-      posting_time: new Date().toTimeString().split(' ')[0],
-      company: data.company,
-      from_warehouse: data.from_warehouse,
-      to_warehouse: data.to_warehouse,
-      items: data.items.map((item: any) => ({
-        item_code: item.item_code,
-        qty: item.qty,
-        transfer_qty: item.qty,
-        uom: item.uom || "Nos",
-        stock_uom: item.stock_uom || "Nos",
-        conversion_factor: 1.0,
-      })),
-    };
+  const payload = {
+    doctype: "Stock Entry",
+    stock_entry_type: data.stock_entry_type,
+    posting_date: data.posting_date,
+    posting_time: data.posting_time,
+    company: data.company,
+    from_warehouse: data.from_warehouse,
+    to_warehouse: data.to_warehouse,
+    items: data.items.map((item: any) => ({
+      item_code: item.item_code,
+      qty: item.qty,
+      transfer_qty: item.qty,
+      uom: item.uom || "Nos",
+      stock_uom: item.stock_uom || "Nos",
+      conversion_factor: 1.0,
+      serial_no: item.serial_no,
+      batch_no: item.batch_no,
+    })),
+  };
 
-    const response = await api.post("/api/resource/Stock Entry", payload);
-    return response.data;
-  } catch (error) {
-    const errorDetails = getErrorDetails(error);
-    console.error("Error creating stock entry:", errorDetails);
-    throw new Error("Failed to create stock entry");
-  }
+  const response = await api.post("/api/resource/Stock Entry", payload);
+  return response.data;
 };
 
-export const getItemDetails = async (itemCode: string) => {
-  try {
-    // First try to get item by scanning
-    const scanResponse = await api.get("/api/method/erpnext.stock.utils.scan_barcode", {
-      params: { search_value: itemCode }
-    });
+const scanBarcode = async (searchValue: string) => {
+  const response = await api.get("/api/method/erpnext.stock.utils.scan_barcode", {
+    params: { search_value: searchValue },
+  });
+  return response.data?.message;
+};
 
-    if (scanResponse.data?.message?.item_code) {
-      // If we got an item from scanning, get its full details
-      const itemResponse = await api.get(`/api/resource/Item/${scanResponse.data.message.item_code}`);
+const searchItemCandidates = async (searchValue: string): Promise<ItemLookupResult[]> => {
+  const response = await api.get("/api/resource/Item", {
+    params: {
+      fields: '["name", "item_name", "stock_uom"]',
+      filters: JSON.stringify([
+        ["Item", "disabled", "=", 0],
+        ["Item", "has_variants", "=", 0],
+      ]),
+      or_filters: JSON.stringify([
+        ["Item", "name", "=", searchValue],
+        ["Item", "item_code", "=", searchValue],
+        ["Item", "item_name", "like", `%${searchValue}%`],
+        ["Item Barcode", "barcode", "=", searchValue],
+      ]),
+      limit_page_length: 20,
+    },
+  });
+
+  return (response.data?.data || []).map((item: any) => ({
+    item_code: item.name,
+    item_name: item.item_name,
+    stock_uom: item.stock_uom,
+  }));
+};
+
+export const getItemDetails = async (searchValue: string): Promise<FrappeResponse<ItemLookupResult>> => {
+  const normalized = searchValue.trim();
+
+  try {
+    const scanned = await scanBarcode(normalized);
+    if (scanned?.item_code) {
+      const itemResponse = await api.get(`/api/resource/Item/${encodeURIComponent(scanned.item_code)}`);
       return {
-        ...itemResponse.data,
-        uom: scanResponse.data.message.uom,
-        serial_no: scanResponse.data.message.serial_no,
-        batch_no: scanResponse.data.message.batch_no
+        data: {
+          item_code: scanned.item_code,
+          item_name: itemResponse.data?.data?.item_name,
+          stock_uom: itemResponse.data?.data?.stock_uom,
+          serial_no: scanned.serial_no,
+          batch_no: scanned.batch_no,
+          uom: scanned.uom,
+          barcode: normalized,
+        },
       };
     }
-
-    // If scanning didn't work, try direct item lookup
-    const response = await api.get(`/api/resource/Item/${itemCode}`);
-    return response.data;
-  } catch (error) {
-    const errorDetails = getErrorDetails(error);
-    console.error("Error fetching item details:", errorDetails);
-    throw new Error("Failed to fetch item details");
+  } catch {
+    // fallback chain for v16/custom sites
   }
+
+  const candidates = await searchItemCandidates(normalized);
+  if (!candidates.length) {
+    throw new Error(`No item found for scan value: ${normalized}`);
+  }
+
+  return { data: candidates[0] };
 };
 
 export const searchItems = async (searchTerm: string) => {
-  try {
-    const filters = [
-      ["name", "like", `%${searchTerm}%`],
-      ["item_name", "like", `%${searchTerm}%`]
-    ];
+  const response = await api.get('/api/method/frappe.desk.search.search_widget', {
+    params: {
+      doctype: 'Item',
+      txt: searchTerm,
+      page_length: 10,
+      searchfield: 'name',
+      fields: '["name", "item_name", "stock_uom", "description"]',
+    },
+  });
 
-    const response = await api.get("/api/method/frappe.desk.search.search_widget", {
-      params: {
-        doctype: "Item",
-        txt: searchTerm,
-        page_length: 10,
-        fields: '["name", "item_name", "stock_uom", "barcode"]'
-      }
-    });
-
-    if (response.data && response.data.message) {
-      return {
-        data: response.data.message.map((item: any[]) => ({
-          name: item[0],
-          item_name: item[1],
-          stock_uom: item[2],
-          barcode: item[3]
-        }))
-      };
-    }
-
-    return { data: [] };
-  } catch (error) {
-    const errorDetails = getErrorDetails(error);
-    console.error("Error searching items:", errorDetails);
-    throw new Error("Failed to search items");
-  }
+  if (!response.data?.message) return { data: [] };
+  return {
+    data: response.data.message.map((item: any[]) => ({
+      name: item[0],
+      item_name: item[1],
+      stock_uom: item[2],
+      description: item[3],
+    })),
+  };
 };
 
 export const getStockBalance = async (itemCode: string, warehouse: string, date: string) => {
-  try {
-    // Use the Quick Stock Balance API endpoint
-    const response = await api.get("/api/method/erpnext.stock.doctype.quick_stock_balance.quick_stock_balance.get_stock_item_details", {
-      params: {
-        warehouse,
-        date,
-        item: itemCode
-      }
-    });
-
-    // The API returns qty and value directly
-    return {
-      data: {
-        qty: response.data.message.qty || 0,
-        value: response.data.message.value || 0
-      }
-    };
-  } catch (error) {
-    const errorDetails = getErrorDetails(error);
-    console.error("Error fetching stock balance:", errorDetails);
-    throw new Error("Failed to fetch stock balance");
-  }
+  const response = await api.get('/api/method/erpnext.stock.doctype.quick_stock_balance.quick_stock_balance.get_stock_item_details', {
+    params: { item: itemCode, warehouse, date },
+  });
+  return response.data;
 };
 
 export const getDashboardStats = async () => {
-  try {
-    // First, get all job cards to count statuses
-    const jobCardsResponse = await api.get("/api/resource/Job Card", {
-      params: {
-        fields: '["name", "status"]',
-        limit_page_length: 1000
-      }
-    });
+  const [itemCount, warehouseCount, companyCount] = await Promise.all([
+    api.get('/api/resource/Item', { params: { fields: '["name"]', limit_page_length: 1 } }),
+    api.get('/api/resource/Warehouse', { params: { fields: '["name"]', limit_page_length: 1 } }),
+    api.get('/api/resource/Company', { params: { fields: '["name"]', limit_page_length: 1 } }),
+  ]);
 
-    const jobCardStats = {
-      Open: 0,
-      "Work In Progress": 0,
-      "On Hold": 0
-    };
-
-    // Count job cards by status
-    jobCardsResponse.data.data.forEach((card: any) => {
-      if (card.status in jobCardStats) {
-        jobCardStats[card.status as keyof typeof jobCardStats]++;
-      }
-    });
-
-    // Get other stats
-    const statsQueries = [
-      // Work Orders
-      api.get("/api/method/frappe.desk.reportview.get", {
-        params: {
-          doctype: "Work Order",
-          fields: '["name", "status"]',
-          filters: JSON.stringify([
-            ["status", "in", ["Not Started", "In Process"]],
-            ["docstatus", "=", 1]
-          ])
-        }
-      }),
-      // Stock Entries
-      api.get("/api/method/frappe.desk.reportview.get", {
-        params: {
-          doctype: "Stock Entry",
-          fields: '["name", "posting_date"]',
-          filters: JSON.stringify([["docstatus", "=", 1]]),
-          limit_page_length: 30,
-          order_by: "creation desc"
-        }
-      }),
-      // Material Requests
-      api.get("/api/method/frappe.desk.reportview.get", {
-        params: {
-          doctype: "Material Request",
-          fields: '["name", "status"]',
-          filters: JSON.stringify([
-            ["status", "in", ["Pending", "Partially Ordered"]],
-            ["docstatus", "=", 1]
-          ])
-        }
-      }),
-      // Purchase Orders
-      api.get("/api/method/frappe.desk.reportview.get", {
-        params: {
-          doctype: "Purchase Order",
-          fields: '["name", "status"]',
-          filters: JSON.stringify([
-            ["status", "in", ["To Receive", "To Receive and Bill"]],
-            ["docstatus", "=", 1]
-          ])
-        }
-      }),
-      // Quality Inspections
-      api.get("/api/method/frappe.desk.reportview.get", {
-        params: {
-          doctype: "Quality Inspection",
-          fields: '["name", "status"]',
-          filters: JSON.stringify([["status", "=", "Pending"]])
-        }
-      })
-    ];
-
-    const responses = await Promise.all(statsQueries);
-
-    const stats = {
-      "Work Order": responses[0]?.data?.message?.values?.length || 0,
-      "Job Card": jobCardStats,
-      "Stock Entry": responses[1]?.data?.message?.values?.length || 0,
-      "Material Request": responses[2]?.data?.message?.values?.length || 0,
-      "Purchase Order": responses[3]?.data?.message?.values?.length || 0,
-      "Quality Inspection": responses[4]?.data?.message?.values?.length || 0
-    };
-
-    return { message: stats };
-  } catch (error) {
-    const errorDetails = getErrorDetails(error);
-    console.error("Error fetching dashboard stats:", errorDetails);
-    throw new Error("Failed to fetch dashboard stats");
-  }
+  return {
+    itemCount: itemCount.data?.data?.length ?? 0,
+    warehouseCount: warehouseCount.data?.data?.length ?? 0,
+    companyCount: companyCount.data?.data?.length ?? 0,
+  };
 };
